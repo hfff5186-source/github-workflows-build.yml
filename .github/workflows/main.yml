@@ -1,0 +1,60 @@
+name: Build Geode Mod
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - target: win
+        - target: macm1
+        - target: macintel
+        - target: ios
+        - target: android32
+        - target: android64
+
+    name: Build ${{ matrix.config.target }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Unpack mod source
+        shell: bash
+        run: |
+          cat > unpack.py << 'PYEOF'
+          import glob, subprocess, zipfile
+          zips = []
+          try:
+              out = subprocess.check_output(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]).decode().split("\n")
+              zips = sorted(f.strip() for f in out if f.strip().endswith(".zip"))
+          except Exception as e:
+              print("git failed:", e)
+          if not zips:
+              zips = sorted(glob.glob("*.zip"))
+          z = zips[-1]
+          print("Using", z)
+          zipfile.ZipFile(z).extractall(".")
+          PYEOF
+          python3 unpack.py
+
+      - uses: geode-sdk/build-geode-mod-docker@v1
+        with:
+          target: ${{ matrix.config.target }}
+          upload: true
+
+  merge:
+    name: Merge
+    runs-on: ubuntu-latest
+    needs: ['build']
+
+    steps:
+      - uses: geode-sdk/build-geode-mod-docker/merge@v1
+        with:
+          upload: true
